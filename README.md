@@ -1,4 +1,4 @@
-an example azure load balancer
+an example azure basic sku load balancer
 
 ![](architecture.png)
 
@@ -37,15 +37,22 @@ Launch the example:
 make terraform-apply
 ```
 
-Using the Azure Portal, run the `provision-web.sh` script in the `web1` virtual machine to launch an example web server.
+Using the Azure Portal, use `Run command | Run Command Script` to run the `provision-web.sh` script in the `web1` virtual machine to launch an example web server.
 
 Using a web browser, access the `web` load balancer IP, and see it show a page from `web1` virtual machine.
 
 Repeat for the `web2` virtual machine and see it periodically changing from showing a page from `web1` and `web2` virtual machine. You can test with:
 
 ```bash
-while true; do wget -qO- http://<web load balancer ip address>/test | grep VM; sleep .1; done
+while true; do wget -qO- "http://$(terraform output app1_load_balancer_ip_address)/test" | grep VM; sleep .1; done
 ```
+
+# Basic SKU Load Balancer Notes
+
+* A load labancer can only be in a single availibilty set.
+* You can only use *one* internal and one public load balancer per availibilty set.
+* You can assign several frontend IP addresses to a single load-balancer.
+* From a single load-balancer, You can access several backend services by running them in different ports.
 
 # Reference
 

@@ -9,26 +9,26 @@ apt-get install -y nodejs
 node --version
 npm --version
 
-# add the hello-world user.
-groupadd --system hello-world
+# add the app user.
+groupadd --system app
 adduser \
     --system \
     --disabled-login \
     --no-create-home \
     --gecos '' \
-    --ingroup hello-world \
-    --home /opt/hello-world \
-    hello-world
-install -d -o root -g hello-world -m 750 /opt/hello-world
+    --ingroup app \
+    --home /opt/app \
+    app
+install -d -o root -g app -m 750 /opt/app
 
-# create an hello world http server and run it as a systemd service.
-cat >/opt/hello-world/main.js <<EOF
+# create an example http server and run it as a systemd service.
+cat >/opt/app/main.js <<EOF
 const http = require("http");
 
-function main(metadata) {
-    const server = http.createServer((request, response) => {
-        const serverAddress = request.socket.localAddress;
-        const clientAddress = request.socket.remoteAddress;
+function createRequestListener(metadata) {
+    return (request, response) => {
+        const serverAddress = \`\${request.socket.localAddress}:\${request.socket.localPort}\`;
+        const clientAddress = \`\${request.socket.remoteAddress}:\${request.socket.remotePort}\`;
         const message = \`VM Name: \${metadata.compute.name}
 Server Address: \${serverAddress}
 Client Address: \${clientAddress}
@@ -38,8 +38,18 @@ Request URL: \${request.url}
         response.writeHead(200, {"Content-Type": "text/plain"});
         response.write(message);
         response.end();
+    };
+}
+
+function main(metadata, port, healthzPort) {
+    const ports = [port];
+    if (port != healthzPort) {
+        ports.push(healthzPort);
+    }
+    ports.forEach((port) => {
+        const server = http.createServer(createRequestListener(metadata));
+        server.listen(port);
     });
-    server.listen(3000);
 }
 
 // see https://docs.microsoft.com/en-us/azure/virtual-machines/linux/instance-metadata-service#retrieving-all-metadata-for-an-instance
@@ -55,15 +65,15 @@ http.get(
         response.on("data", (chunk) => data += chunk);
         response.on("end", () => {
             const metadata = JSON.parse(data);
-            main(metadata);
+            main(metadata, process.argv[2], process.argv[3]);
         });
     }
 ).on("error", (error) => console.log("Error fetching metadata: " + error.message));
 EOF
 cat >package.json <<'EOF'
 {
-  "name": "hello-world",
-  "description": "the classic hello world",
+  "name": "app",
+  "description": "example application",
   "version": "1.0.0",
   "license": "MIT",
   "main": "main.js",
@@ -72,27 +82,32 @@ cat >package.json <<'EOF'
 EOF
 npm install
 
-# launch hello-world.
-cat >/etc/systemd/system/hello-world.service <<'EOF'
+# launch two apps: app1 (port 3100 and 3101) and app2 (port 3200 and 3201).
+for n in 1 2; do
+    port="3${n}00"
+    healthz_port="3${n}01"
+    cat >/etc/systemd/system/app$n.service <<EOF
 [Unit]
-Description=Hello World
+Description=Example Azure Web Application
 After=network.target
 
 [Service]
 Type=simple
-User=hello-world
-Group=hello-world
+User=app
+Group=app
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node main.js
-WorkingDirectory=/opt/hello-world
+ExecStart=/usr/bin/node main.js $port $healthz_port
+WorkingDirectory=/opt/app
 Restart=on-abort
 
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl enable hello-world
-systemctl start hello-world
+    systemctl enable app$n
+    systemctl start app$n
+done
 
 # try it.
 sleep .2
-wget -qO- localhost:3000
+wget -qO- localhost:3100/try
+wget -qO- localhost:3200/try

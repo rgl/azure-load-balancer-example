@@ -25,6 +25,14 @@ variable "web_vm_count" {
 # NB when you run make terraform-apply this is set from the TF_VAR_admin_ssh_key_data environment variable, which comes from the ~/.ssh/id_rsa.pub file.
 variable "admin_ssh_key_data" {}
 
+output "app1_load_balancer_ip_address" {
+  value = "${azurerm_public_ip.app1.ip_address}"
+}
+
+output "app2_load_balancer_ip_address" {
+  value = "${azurerm_public_ip.app2.ip_address}"
+}
+
 provider "azurerm" {}
 
 resource "azurerm_resource_group" "example" {
@@ -67,8 +75,15 @@ resource "azurerm_subnet" "backend" {
   address_prefix       = "10.102.2.0/24"
 }
 
-resource "azurerm_public_ip" "web" {
-  name                         = "web"
+resource "azurerm_public_ip" "app1" {
+  name                         = "app1"
+  resource_group_name          = "${azurerm_resource_group.example.name}"
+  location                     = "${azurerm_resource_group.example.location}"
+  public_ip_address_allocation = "Static"
+}
+
+resource "azurerm_public_ip" "app2" {
+  name                         = "app2"
   resource_group_name          = "${azurerm_resource_group.example.name}"
   location                     = "${azurerm_resource_group.example.location}"
   public_ip_address_allocation = "Static"
@@ -78,10 +93,16 @@ resource "azurerm_lb" "web" {
   name                = "web"
   resource_group_name = "${azurerm_resource_group.example.name}"
   location            = "${azurerm_resource_group.example.location}"
+  sku                 = "Basic"
 
   frontend_ip_configuration {
-    name                 = "web"
-    public_ip_address_id = "${azurerm_public_ip.web.id}"
+    name                 = "app1"
+    public_ip_address_id = "${azurerm_public_ip.app1.id}"
+  }
+
+  frontend_ip_configuration {
+    name                 = "app2"
+    public_ip_address_id = "${azurerm_public_ip.app2.id}"
   }
 }
 
@@ -98,27 +119,52 @@ resource "azurerm_network_interface_backend_address_pool_association" "web" {
   backend_address_pool_id = "${azurerm_lb_backend_address_pool.web.id}"
 }
 
-resource "azurerm_lb_probe" "web" {
+resource "azurerm_lb_probe" "app1" {
   resource_group_name = "${azurerm_resource_group.example.name}"
   loadbalancer_id     = "${azurerm_lb.web.id}"
-  name                = "healthz"
+  name                = "app1-healthz"
   protocol            = "Http"
-  port                = 3000
+  port                = 3101
   request_path        = "/healthz"
   interval_in_seconds = 5
   number_of_probes    = 2
 }
 
-resource "azurerm_lb_rule" "web" {
+resource "azurerm_lb_probe" "app2" {
+  resource_group_name = "${azurerm_resource_group.example.name}"
+  loadbalancer_id     = "${azurerm_lb.web.id}"
+  name                = "app2-healthz"
+  protocol            = "Http"
+  port                = 3201
+  request_path        = "/healthz"
+  interval_in_seconds = 5
+  number_of_probes    = 2
+}
+
+resource "azurerm_lb_rule" "app1" {
   resource_group_name            = "${azurerm_resource_group.example.name}"
-  name                           = "web"
+  name                           = "app1"
   loadbalancer_id                = "${azurerm_lb.web.id}"
-  probe_id                       = "${azurerm_lb_probe.web.id}"
+  probe_id                       = "${azurerm_lb_probe.app1.id}"
   backend_address_pool_id        = "${azurerm_lb_backend_address_pool.web.id}"
   protocol                       = "Tcp"
   frontend_port                  = 80
-  backend_port                   = "${azurerm_lb_probe.web.port}"
-  frontend_ip_configuration_name = "web"
+  backend_port                   = 3100
+  frontend_ip_configuration_name = "app1"
+  idle_timeout_in_minutes        = 4
+  load_distribution              = "Default"
+}
+
+resource "azurerm_lb_rule" "app2" {
+  resource_group_name            = "${azurerm_resource_group.example.name}"
+  name                           = "app2"
+  loadbalancer_id                = "${azurerm_lb.web.id}"
+  probe_id                       = "${azurerm_lb_probe.app2.id}"
+  backend_address_pool_id        = "${azurerm_lb_backend_address_pool.web.id}"
+  protocol                       = "Tcp"
+  frontend_port                  = 80
+  backend_port                   = 3200
+  frontend_ip_configuration_name = "app2"
   idle_timeout_in_minutes        = 4
   load_distribution              = "Default"
 }
@@ -151,13 +197,25 @@ resource "azurerm_network_security_group" "web" {
   #     | 65500    | DenyAllOutBound                | Any   | Any       | Any               | Any             | Deny    |
 
   security_rule {
-    name                       = "HTTP"
+    name                       = "app1"
     priority                   = 1000
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range          = "*"
-    destination_port_range     = "3000"
+    destination_port_range     = "3100"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "app2"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "3200"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
@@ -172,6 +230,7 @@ resource "azurerm_network_interface" "web" {
 
   ip_configuration {
     name                          = "web"
+    primary                       = true
     subnet_id                     = "${azurerm_subnet.backend.id}"
     private_ip_address_allocation = "Static"
     private_ip_address            = "10.102.2.${count.index + 4}"  # NB Azure reserves the first four addresses in each subnet address range, so do not use those.
