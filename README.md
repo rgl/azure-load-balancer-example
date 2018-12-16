@@ -47,10 +47,10 @@ while true; do wget -qO- "http://$(terraform output app1_load_balancer_ip_addres
 
 # Basic SKU Load Balancer Notes
 
-* A load labancer can only be in a single availibilty set.
-* You can only use *one* internal and one public load balancer per availibilty set.
+* A load balancer can only be in a single availability set.
+* You can only use one internal and one public load balancer per availability set.
 * You can assign several frontend IP addresses to a single load-balancer.
-* From a single load-balancer, You can access several backend services by running them in different ports.
+* From a single load-balancer, you can access several backend services by running them in different ports.
 
 # Reference
 
