@@ -37,11 +37,9 @@ Launch the example:
 make terraform-apply
 ```
 
-Using the Azure Portal, use `Run command | Run Command Script` to run the `provision-web.sh` script in the `web1` virtual machine to launch an example web server.
+At VM initialization time [cloud-init](https://cloudinit.readthedocs.io/en/latest/index.html) will run the `provision-web.sh` script to launch the example applications.
 
-Using a web browser, access the `web` load balancer IP, and see it show a page from `web1` virtual machine.
-
-Repeat for the `web2` virtual machine and see it periodically changing from showing a page from `web1` and `web2` virtual machine. You can test with:
+After VM initialization is done (check the boot diagnostics serial log for cloud-init entries), test the `app1` endpoint to see it periodically changing from showing a page from `web1` and `web2` virtual machine. You can test with:
 
 ```bash
 while true; do wget -qO- "http://$(terraform output app1_load_balancer_ip_address)/test" | grep VM; sleep .1; done

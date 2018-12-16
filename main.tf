@@ -207,7 +207,6 @@ resource "azurerm_network_security_group" "web" {
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
-
   security_rule {
     name                       = "app2"
     priority                   = 1001
@@ -270,6 +269,7 @@ resource "azurerm_virtual_machine" "web" {
     computer_name  = "web${count.index + 1}"
     admin_username = "${var.admin_username}"
     admin_password = "${var.admin_password}"
+    custom_data    = "${base64gzip(file("provision-web.sh"))}"
   }
 
   os_profile_linux_config {
