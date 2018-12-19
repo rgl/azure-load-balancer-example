@@ -46,7 +46,7 @@ resource "random_id" "example" {
     resource_group = "${azurerm_resource_group.example.name}"
   }
 
-  byte_length = 8
+  byte_length = 10
 }
 
 resource "azurerm_storage_account" "diagnostics" {
